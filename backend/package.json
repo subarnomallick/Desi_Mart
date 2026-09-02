@@ -1,0 +1,17 @@
+{
+  "name": "deshimart-backend",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "mongoose": "^9.9.4",
+    "razorpay": "^2.9.8",
+    "sqlite3": "^5.1.7"
+  }
+}
