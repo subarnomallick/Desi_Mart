@@ -1,0 +1,33 @@
+# Render Blueprint Specification for DeshiMart Fullstack Application
+# Documentation: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: deshimart
+    runtime: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PAYMENT_GATEWAY_PROVIDER
+        value: razorpay
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: MERCHANT_UPI_VPA
+        value: subarno.mallick.1@oksbi
+      - key: MERCHANT_UPI_NAME
+        value: SUBARNO MALLICK

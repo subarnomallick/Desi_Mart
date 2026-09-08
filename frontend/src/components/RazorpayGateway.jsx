@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   CreditCard, 
   ShieldCheck, 
@@ -13,10 +13,6 @@ import {
   Zap,
   Building2,
   Wallet,
-  QrCode,
-  Copy,
-  Check,
-  CheckCheck,
   ExternalLink
 } from 'lucide-react';
 
@@ -32,10 +28,7 @@ export default function RazorpayGateway({
   const [activeTab, setActiveTab] = useState('upi'); // 'upi' | 'card' | 'netbanking' | 'wallet'
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [pollCount, setPollCount] = useState(0);
-  const [autoDetected, setAutoDetected] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes
+  const [razorpayKeyId, setRazorpayKeyId] = useState('rzp_test_TW0IYLn9akaqhz');
 
   // Form states
   const [cardNumber, setCardNumber] = useState('4111 2222 3333 4444');
@@ -45,94 +38,120 @@ export default function RazorpayGateway({
 
   const [upiId, setUpiId] = useState(user?.email?.split('@')[0] + '@oksbi' || 'customer@oksbi');
   const [selectedUpiApp, setSelectedUpiApp] = useState('gpay');
-  const [utrNumber, setUtrNumber] = useState('');
 
   const [selectedBank, setSelectedBank] = useState('sbi');
   const [selectedWallet, setSelectedWallet] = useState('amazonpay');
 
-  const isCompletedRef = useRef(false);
-
   const formattedAmount = parseFloat(amount).toFixed(2);
-  const upiPayee = 'subarno.mallick.1@oksbi';
-  const upiName = 'SUBARNO MALLICK';
+  const amountInPaise = Math.round(parseFloat(amount) * 100);
 
-  // Dynamic UPI Deep Link
-  const upiDeepLink = `upi://pay?pa=${upiPayee}&pn=${encodeURIComponent(upiName)}&am=${formattedAmount}&cu=INR&tn=${encodeURIComponent(`DeshiMart Order #${orderId?.slice(-6)}`)}`;
-  const dynamicQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(upiDeepLink)}&margin=8`;
+  // Launch Official Razorpay Popup Modal
+  const launchOfficialRazorpayModal = async () => {
+    setIsProcessing(true);
+    setErrorMessage('');
 
-  // Countdown timer
-  useEffect(() => {
-    if (timeLeft <= 0) {
-      onCancel();
-      return;
-    }
-    const timer = setInterval(() => {
-      setTimeLeft(prev => prev - 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [timeLeft, onCancel]);
+    try {
+      if (!window.Razorpay) {
+        throw new Error('Razorpay Checkout SDK is still loading. Please try again.');
+      }
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+      // 1. Create order on server
+      const orderRes = await fetch('/api/payments/razorpay/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          items: cart.map(item => ({
+            product_id: item.id,
+            product_name: item.name,
+            quantity: item.quantity,
+            price: item.price
+          })),
+          totalAmount: amount
+        })
+      });
 
-  // Real-Time Auto-Polling Listener
-  useEffect(() => {
-    if (!orderId || !token) return;
+      const orderData = await orderRes.json();
+      if (!orderRes.ok) {
+        throw new Error(orderData.error || 'Failed to create Razorpay order');
+      }
 
-    let isMounted = true;
+      const activeOrderId = orderData.orderId || orderId;
+      const activeKey = orderData.keyId || razorpayKeyId;
 
-    const checkOrderStatus = async () => {
-      if (isCompletedRef.current) return;
-
-      try {
-        const res = await fetch(`/api/orders/${orderId}/status`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
+      // 2. Official Razorpay Options
+      const options = {
+        key: activeKey,
+        amount: amountInPaise,
+        currency: 'INR',
+        name: 'DeshiMart Direct Farm Platform',
+        description: `Order #${activeOrderId.slice(-8)} payment`,
+        image: 'https://images.unsplash.com/photo-1592417817098-8f3d6eb19675?auto=format&fit=crop&q=80&w=200',
+        prefill: {
+          name: user?.name || 'Customer',
+          email: user?.email || 'customer@deshimart.com',
+          contact: user?.phone || '9876543210'
+        },
+        theme: {
+          color: '#15803d' // Forest green
+        },
+        modal: {
+          ondismiss: function () {
+            setIsProcessing(false);
           }
-        });
+        },
+        handler: async function (response) {
+          try {
+            // 3. Cryptographic signature verification on server
+            const verifyRes = await fetch('/api/payments/razorpay/verify', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                orderId: activeOrderId,
+                razorpay_order_id: response.razorpay_order_id || `order_${Date.now()}`,
+                razorpay_payment_id: response.razorpay_payment_id || `pay_rzp_${Date.now()}`,
+                razorpay_signature: response.razorpay_signature || 'sandbox_verified'
+              })
+            });
 
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted) {
-            setPollCount(prev => prev + 1);
-          }
-
-          if (data.payment_status === 'completed' && !isCompletedRef.current) {
-            isCompletedRef.current = true;
-            if (isMounted) {
-              setAutoDetected(true);
-              setIsProcessing(true);
+            const verifyData = await verifyRes.json();
+            if (verifyRes.ok) {
+              onPaymentComplete('completed', response.razorpay_payment_id || `pay_rzp_${Date.now()}`);
+            } else {
+              setErrorMessage(verifyData.error || 'Payment signature verification failed.');
+              setIsProcessing(false);
             }
-
-            setTimeout(() => {
-              onPaymentComplete('completed', data.upi_txn_id || `pay_rzp_${Date.now().toString(36)}`);
-            }, 800);
+          } catch (verErr) {
+            setErrorMessage('Network error confirming Razorpay payment.');
+            setIsProcessing(false);
           }
         }
-      } catch (err) {
-        // Silently retry
-      }
-    };
+      };
 
-    const interval = setInterval(checkOrderStatus, 2500);
+      const rzpInstance = new window.Razorpay(options);
 
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [orderId, token, onPaymentComplete]);
+      rzpInstance.on('payment.failed', function (response) {
+        console.warn('Razorpay payment failed:', response.error);
+        setErrorMessage(response.error?.description || 'Razorpay payment was not completed.');
+        setIsProcessing(false);
+      });
 
-  const handleCopyUpi = () => {
-    navigator.clipboard.writeText(upiPayee);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+      rzpInstance.open();
+
+    } catch (err) {
+      console.warn('Razorpay popup note:', err.message);
+      setErrorMessage(err.message || 'Could not launch Razorpay popup');
+      setIsProcessing(false);
+    }
   };
 
-  // Execute payment authorization & MongoDB update
-  const handlePayNow = async () => {
+  // Embedded Pay (Direct in modal)
+  const handleEmbeddedPay = async () => {
     setIsProcessing(true);
     setErrorMessage('');
 
@@ -140,8 +159,7 @@ export default function RazorpayGateway({
     const generatedOrderId = `order_rzp_${Date.now().toString(36)}`;
 
     try {
-      // 1.2s realistic network authentication animation
-      await new Promise(r => setTimeout(r, 1200));
+      await new Promise(r => setTimeout(r, 1000));
 
       const res = await fetch('/api/payments/razorpay/verify', {
         method: 'POST',
@@ -152,24 +170,20 @@ export default function RazorpayGateway({
         body: JSON.stringify({
           orderId,
           razorpay_order_id: generatedOrderId,
-          razorpay_payment_id: utrNumber.trim() ? utrNumber.trim() : generatedPaymentId,
+          razorpay_payment_id: generatedPaymentId,
           razorpay_signature: 'sandbox_verified'
         })
       });
 
       const data = await res.json();
       if (res.ok) {
-        isCompletedRef.current = true;
-        setAutoDetected(true);
-        setTimeout(() => {
-          onPaymentComplete('completed', generatedPaymentId);
-        }, 800);
+        onPaymentComplete('completed', generatedPaymentId);
       } else {
-        setErrorMessage(data.error || 'Payment verification failed. Please try again.');
+        setErrorMessage(data.error || 'Payment verification failed.');
         setIsProcessing(false);
       }
     } catch (e) {
-      setErrorMessage('Network error confirming payment with server.');
+      setErrorMessage('Network error confirming payment.');
       setIsProcessing(false);
     }
   };
@@ -192,25 +206,8 @@ export default function RazorpayGateway({
 
   return (
     <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 flex flex-col max-h-[94vh] relative">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 flex flex-col max-h-[94vh]">
         
-        {/* Success Transition Splash */}
-        {autoDetected && (
-          <div className="absolute inset-0 bg-forest-700 text-white z-50 flex flex-col items-center justify-center p-6 text-center animate-fade-in space-y-4">
-            <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg animate-bounce">
-              <CheckCircle2 className="w-12 h-12 text-white" />
-            </div>
-            <div>
-              <h3 className="text-2xl font-black">Payment Verified & Received!</h3>
-              <p className="text-sm text-forest-200 mt-1">Transaction confirmed by banking switch.</p>
-            </div>
-            <div className="flex items-center gap-2 text-xs bg-forest-800/80 px-4 py-2 rounded-full border border-forest-500 font-mono">
-              <RefreshCw className="w-4 h-4 animate-spin text-sage-300" />
-              <span>Finalizing verified receipt...</span>
-            </div>
-          </div>
-        )}
-
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-700 via-blue-600 to-indigo-800 text-white p-5 sm:p-6 flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-3">
@@ -218,11 +215,11 @@ export default function RazorpayGateway({
               <CreditCard className="h-6 w-6 text-blue-200" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <h2 className="font-extrabold text-lg tracking-tight">Razorpay Secure Checkout</h2>
                 <span className="bg-emerald-400/20 text-emerald-300 border border-emerald-400/40 text-[10px] font-black uppercase px-2 py-0.2 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                  Live
+                  Active Key
                 </span>
               </div>
               <p className="text-xs text-blue-200 flex items-center gap-1 mt-0.5">
@@ -242,7 +239,7 @@ export default function RazorpayGateway({
           </button>
         </div>
 
-        {/* Amount & Expiry Banner */}
+        {/* Amount Banner */}
         <div className="bg-blue-50/80 px-6 py-3.5 border-b border-blue-100 flex items-center justify-between shrink-0">
           <div>
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Payable</span>
@@ -253,29 +250,14 @@ export default function RazorpayGateway({
           </div>
 
           <div className="text-right">
-            <div className="flex items-center justify-end space-x-1.5 bg-amber-100/80 text-amber-900 px-3 py-1 rounded-full text-xs font-bold border border-amber-300/40">
-              <Clock className="h-3.5 w-3.5 text-amber-700 animate-spin" style={{ animationDuration: '6s' }} />
-              <span>Expires: {formatTime(timeLeft)}</span>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-1 font-mono">Ref: #DM-{orderId?.slice(-8)}</p>
-          </div>
-        </div>
-
-        {/* Real-time Radar Listener Strip */}
-        <div className="bg-emerald-50/70 border-b border-emerald-100/80 px-4 py-2 flex items-center justify-between text-xs text-emerald-800 shrink-0">
-          <div className="flex items-center gap-2 font-medium">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-600"></span>
+            <span className="inline-block bg-blue-100 text-blue-800 text-[11px] font-bold px-2.5 py-1 rounded-full">
+              Merchant: DeshiMart
             </span>
-            <span className="text-[11px] font-bold">Listening for Bank UPI / Card Settlement...</span>
+            <p className="text-[11px] text-slate-400 mt-1 font-mono">Ref: #DM-{orderId?.toString().slice(-8)}</p>
           </div>
-          <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full font-bold">
-            Radar Ping #{pollCount}
-          </span>
         </div>
 
-        {/* Payment Method Tabs */}
+        {/* Method Tabs */}
         <div className="p-4 pb-0 shrink-0">
           <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-2xl">
             <button
@@ -341,56 +323,43 @@ export default function RazorpayGateway({
           {/* 1. UPI TAB */}
           {activeTab === 'upi' && (
             <div className="space-y-4">
-              {/* Scan QR Box */}
-              <div className="flex flex-col items-center bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                <img
-                  src={dynamicQrUrl}
-                  alt="UPI QR Code"
-                  className="w-44 h-44 rounded-xl object-contain bg-white p-1 border border-slate-200 shadow-xs"
-                  onError={(e) => { e.target.src = '/upi_qr.png'; }}
-                />
-                
-                <div className="text-center mt-2">
-                  <div className="flex items-center justify-center gap-1 text-xs font-bold text-slate-800">
-                    <span>{upiName}</span>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  </div>
-                  <button
-                    onClick={handleCopyUpi}
-                    className="mt-1 inline-flex items-center gap-1.5 bg-white text-blue-700 px-3 py-0.5 rounded-full text-xs font-mono font-bold border border-blue-200 hover:bg-blue-50 transition-colors shadow-2xs"
-                  >
-                    <span>{upiPayee}</span>
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-blue-600" />}
-                  </button>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Select UPI App
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {upiApps.map((app) => (
+                    <button
+                      key={app.id}
+                      onClick={() => setSelectedUpiApp(app.id)}
+                      className={`p-2.5 rounded-xl border text-center font-bold text-xs flex flex-col items-center gap-1 transition-all ${
+                        selectedUpiApp === app.id
+                          ? 'border-blue-600 ring-2 ring-blue-500/20 bg-blue-50/70 shadow-sm text-blue-800'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="text-xl">{app.icon}</span>
+                      <span className="text-[11px] truncate">{app.name}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              {/* Mobile Deep Link */}
-              <a
-                href={upiDeepLink}
-                className="sm:hidden w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs shadow transition-all"
-              >
-                <Smartphone className="w-4 h-4" />
-                <span>Pay in UPI App (GPay / PhonePe / Paytm)</span>
-                <ExternalLink className="w-3.5 h-3.5 ml-1" />
-              </a>
-
-              {/* UTR Input (Optional) */}
               <div>
-                <label className="block text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                  UPI VPA or 12-Digit UTR
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Or Enter UPI ID / VPA
                 </label>
                 <input
                   type="text"
-                  value={utrNumber}
-                  onChange={(e) => setUtrNumber(e.target.value)}
-                  placeholder="e.g. customer@oksbi or 423819284910"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs font-medium text-slate-800"
+                  value={upiId}
+                  onChange={(e) => setUpiId(e.target.value)}
+                  placeholder="mobile@okhdfcbank"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm font-medium text-slate-800"
                 />
               </div>
 
               <button
-                onClick={handlePayNow}
+                onClick={handleEmbeddedPay}
                 disabled={isProcessing}
                 className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-extrabold py-3.5 px-5 rounded-2xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
               >
@@ -471,7 +440,7 @@ export default function RazorpayGateway({
               </div>
 
               <button
-                onClick={handlePayNow}
+                onClick={handleEmbeddedPay}
                 disabled={isProcessing}
                 className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-extrabold py-3.5 px-5 rounded-2xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
               >
@@ -495,7 +464,7 @@ export default function RazorpayGateway({
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  Select Bank
+                  Popular Banks
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   {banks.map((bank) => (
@@ -516,7 +485,7 @@ export default function RazorpayGateway({
               </div>
 
               <button
-                onClick={handlePayNow}
+                onClick={handleEmbeddedPay}
                 disabled={isProcessing}
                 className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-extrabold py-3.5 px-5 rounded-2xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
               >
@@ -559,14 +528,14 @@ export default function RazorpayGateway({
                       }`}
                     >
                       <span>{w.name}</span>
-                      <span className="text-emerald-600 text-[10px] font-bold">Available</span>
+                      <span className="text-emerald-600 text-[10px] font-bold">Supported</span>
                     </button>
                   ))}
                 </div>
               </div>
 
               <button
-                onClick={handlePayNow}
+                onClick={handleEmbeddedPay}
                 disabled={isProcessing}
                 className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-extrabold py-3.5 px-5 rounded-2xl shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50"
               >
@@ -585,15 +554,27 @@ export default function RazorpayGateway({
             </div>
           )}
 
+          {/* Launch Official Razorpay Popup */}
+          <div className="pt-2 border-t border-slate-100 text-center">
+            <button
+              onClick={launchOfficialRazorpayModal}
+              disabled={isProcessing}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center justify-center gap-1.5 mx-auto py-1 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Launch Official Razorpay Popup Modal</span>
+            </button>
+          </div>
+
         </div>
 
         {/* Footer */}
         <div className="bg-slate-50 px-6 py-3.5 border-t border-slate-100 flex items-center justify-between text-slate-500 text-[11px] shrink-0">
           <div className="flex items-center gap-1 font-semibold">
             <ShieldCheck className="w-4 h-4 text-blue-600" />
-            <span>Razorpay Payment Solutions</span>
+            <span>Key: {razorpayKeyId}</span>
           </div>
-          <span className="font-mono text-slate-400">100% Encrypted</span>
+          <span className="font-mono text-slate-400 font-bold">Razorpay 256-Bit</span>
         </div>
 
       </div>

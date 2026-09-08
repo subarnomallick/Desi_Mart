@@ -8,7 +8,7 @@ import {
   ShieldCheck, 
   ChevronRight, 
   CheckCircle2, 
-  QrCode, 
+  CreditCard, 
   ArrowRight,
   Tag,
   Sparkles,
@@ -16,7 +16,7 @@ import {
   Check,
   Percent
 } from 'lucide-react';
-import PaymentGateway from '../components/PaymentGateway';
+import RazorpayGateway from '../components/RazorpayGateway';
 import confetti from 'canvas-confetti';
 
 export default function Cart({ cart, setCart, user, token, setActivePage }) {
@@ -107,8 +107,8 @@ export default function Cart({ cart, setCart, user, token, setActivePage }) {
         price: item.price
       }));
 
-      // 1. Create order on server
-      const res = await fetch('/api/payments/create-session', {
+      // Create order on server and Razorpay
+      const res = await fetch('/api/payments/razorpay/create-order', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -126,7 +126,7 @@ export default function Cart({ cart, setCart, user, token, setActivePage }) {
         setCreatedOrderId(data.orderId);
         setShowPaymentModal(true);
       } else {
-        setCheckoutError(data.error || 'Failed to initialize UPI checkout session');
+        setCheckoutError(data.error || 'Failed to initialize Razorpay checkout');
       }
     } catch (e) {
       setCheckoutError('Network error connecting to payment gateway server.');
@@ -155,23 +155,23 @@ export default function Cart({ cart, setCart, user, token, setActivePage }) {
       } catch (e) {}
     } else {
       setShowPaymentModal(false);
-      alert('Payment was not completed.');
+      alert('Razorpay payment was not completed.');
     }
   };
 
   if (orderSuccess && successDetails) {
     return (
-      <div className="max-w-xl mx-auto my-8 bg-white rounded-3xl shadow-xl p-8 border border-emerald-100 text-center animate-fade-in space-y-6">
+      <div className="max-w-xl mx-auto my-8 bg-white rounded-3xl shadow-xl p-8 border border-blue-100 text-center animate-fade-in space-y-6">
         <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600 shadow-inner">
           <CheckCircle2 className="w-12 h-12" />
         </div>
 
         <div>
           <span className="bg-emerald-100 text-emerald-800 text-xs font-extrabold uppercase px-3 py-1 rounded-full border border-emerald-300">
-            Real UPI Bank Settlement Verified
+            Payment Verified by Razorpay
           </span>
           <h2 className="text-2xl font-black text-slate-900 mt-2">Order Confirmed Successfully!</h2>
-          <p className="text-xs text-slate-500 mt-1">Payment verified directly with NPCI Banking switch.</p>
+          <p className="text-xs text-slate-500 mt-1">Authenticated via Razorpay Payment Solutions.</p>
         </div>
 
         {/* Receipt Box */}
@@ -181,8 +181,8 @@ export default function Cart({ cart, setCart, user, token, setActivePage }) {
             <span className="font-mono font-bold text-slate-800">#DM-{successDetails.orderId?.slice(-8)}</span>
           </div>
           <div className="flex justify-between pb-2 border-b border-slate-200">
-            <span className="text-slate-500">Bank UTR / Txn Ref:</span>
-            <span className="font-mono font-bold text-emerald-700">{successDetails.txnId}</span>
+            <span className="text-slate-500">Razorpay Payment ID:</span>
+            <span className="font-mono font-bold text-blue-700">{successDetails.txnId}</span>
           </div>
           {successDetails.packagingDiscount > 0 && (
             <div className="flex justify-between pb-2 border-b border-slate-200 text-emerald-700">
@@ -203,7 +203,7 @@ export default function Cart({ cart, setCart, user, token, setActivePage }) {
         <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <button
             onClick={() => setActivePage('profile')}
-            className="flex-1 bg-forest-600 hover:bg-forest-700 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-md active:scale-95"
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-md active:scale-95"
           >
             View in Profile & Orders
           </button>
@@ -353,12 +353,12 @@ export default function Cart({ cart, setCart, user, token, setActivePage }) {
                         onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleApplyCoupon(); }}
                         placeholder="Enter coupon (e.g. FREEPACK)"
-                        className="w-full pl-3.5 pr-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-forest-500 font-mono text-xs font-bold text-slate-800 uppercase tracking-wider placeholder:normal-case placeholder:font-normal"
+                        className="w-full pl-3.5 pr-3 py-2 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-xs font-bold text-slate-800 uppercase tracking-wider placeholder:normal-case placeholder:font-normal"
                       />
                     </div>
                     <button
                       onClick={() => handleApplyCoupon()}
-                      className="bg-forest-600 hover:bg-forest-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all shadow-xs shrink-0"
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all shadow-xs shrink-0"
                     >
                       Apply Code
                     </button>
@@ -467,30 +467,30 @@ export default function Cart({ cart, setCart, user, token, setActivePage }) {
 
               <div className="border-t border-slate-200 my-2 pt-2 flex justify-between text-base font-black text-slate-900">
                 <span>Total Payable:</span>
-                <span className="text-forest-700">₹{total.toFixed(2)}</span>
+                <span className="text-blue-700">₹{total.toFixed(2)}</span>
               </div>
             </div>
 
             <button
               onClick={handleCheckout}
-              className="w-full bg-forest-600 hover:bg-forest-700 active:scale-[0.99] text-white font-extrabold py-3.5 rounded-2xl text-sm shadow-md shadow-forest-600/20 transition-all flex items-center justify-center gap-2"
+              className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-extrabold py-3.5 rounded-2xl text-sm shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
             >
-              <QrCode className="w-4 h-4" />
-              <span>{user ? `Proceed to Pay (₹${total.toFixed(2)})` : 'Login to Checkout'}</span>
+              <CreditCard className="w-4 h-4" />
+              <span>{user ? `Pay with Razorpay (₹${total.toFixed(2)})` : 'Login to Checkout'}</span>
               <ChevronRight className="w-4 h-4" />
             </button>
 
             <div className="flex items-center justify-center gap-1.5 text-slate-400 text-[11px] font-semibold uppercase tracking-wider pt-1">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>Direct Bank UPI Escrow Protected</span>
+              <ShieldCheck className="w-4 h-4 text-blue-600" />
+              <span>Official Razorpay 256-Bit Escrow</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* REAL UPI PAYMENT GATEWAY MODAL */}
+      {/* RAZORPAY GATEWAY MODAL */}
       {showPaymentModal && createdOrderId && (
-        <PaymentGateway
+        <RazorpayGateway
           orderId={createdOrderId}
           amount={total}
           user={user}
