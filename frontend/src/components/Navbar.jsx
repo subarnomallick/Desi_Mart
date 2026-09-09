@@ -59,6 +59,24 @@ export default function Navbar({ activePage, setActivePage, cart, user, onLogout
                 <span>My Profile</span>
               </button>
             )}
+
+            <button 
+              onClick={() => setActivePage('about-us')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold transition-colors ${
+                activePage === 'about-us' ? 'bg-forest-600 text-white' : 'text-forest-100 hover:text-white hover:bg-forest-600'
+              }`}
+            >
+              About
+            </button>
+
+            <button 
+              onClick={() => setActivePage('contact-us')}
+              className={`px-3 py-2 rounded-md text-sm font-semibold transition-colors ${
+                activePage === 'contact-us' ? 'bg-forest-600 text-white' : 'text-forest-100 hover:text-white hover:bg-forest-600'
+              }`}
+            >
+              Contact
+            </button>
           </div>
 
           {/* User & Cart Controls */}
@@ -149,6 +167,18 @@ export default function Navbar({ activePage, setActivePage, cart, user, onLogout
               Profile
             </button>
           )}
+          <button 
+            onClick={() => setActivePage('about-us')}
+            className={`text-xs font-semibold px-2 py-1 rounded ${activePage === 'about-us' ? 'bg-forest-600' : ''}`}
+          >
+            About
+          </button>
+          <button 
+            onClick={() => setActivePage('contact-us')}
+            className={`text-xs font-semibold px-2 py-1 rounded ${activePage === 'contact-us' ? 'bg-forest-600' : ''}`}
+          >
+            Contact
+          </button>
         </div>
       </div>
     </nav>

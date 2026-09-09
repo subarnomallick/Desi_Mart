@@ -6,8 +6,14 @@ import FarmerDashboard from './pages/FarmerDashboard';
 import Cart from './pages/Cart';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
+import AboutUs from './pages/AboutUs';
+import ContactUs from './pages/ContactUs';
+import TermsConditions from './pages/TermsConditions';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import RefundPolicy from './pages/RefundPolicy';
+import ShippingPolicy from './pages/ShippingPolicy';
+import Footer from './components/Footer';
 import AIChat from './components/AIChat';
-import { Leaf, Info, ShieldCheck, Mail } from 'lucide-react';
 
 export default function App() {
   const [activePage, setActivePage] = useState('home');
@@ -109,6 +115,18 @@ export default function App() {
         );
       case 'login':
         return <Login setToken={setToken} setUser={setUser} setActivePage={setActivePage} />;
+      case 'about-us':
+        return <AboutUs setActivePage={setActivePage} />;
+      case 'contact-us':
+        return <ContactUs />;
+      case 'terms-conditions':
+        return <TermsConditions />;
+      case 'privacy-policy':
+        return <PrivacyPolicy />;
+      case 'refund-policy':
+        return <RefundPolicy />;
+      case 'shipping-policy':
+        return <ShippingPolicy />;
       default:
         return <Home setActivePage={setActivePage} user={user} />;
     }
@@ -130,51 +148,8 @@ export default function App() {
         {renderPage()}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-forest-900 text-forest-100 border-t border-forest-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <Leaf className="h-6 w-6 text-sage-500 fill-sage-500" />
-                <span className="font-extrabold text-xl text-white">Deshi<span className="text-sage-400">Mart</span></span>
-              </div>
-              <p className="text-xs text-forest-200 leading-relaxed">
-                Empowering farmers by bridging the gap to consumers. Direct organic crop sales, high quality agricultural seed, specialized tools and fertilizers, protected under secure payments.
-              </p>
-            </div>
-            
-            <div className="space-y-2.5">
-              <h4 className="font-bold text-sm text-white flex items-center space-x-1">
-                <Info className="h-4.5 w-4.5 text-sage-400" />
-                <span>Agricultural Trust</span>
-              </h4>
-              <p className="text-xs text-forest-200 leading-relaxed">
-                We ensure that farmers get direct access to consumers. Our mock UPI checkout facilitates testing transaction logs seamlessly.
-              </p>
-            </div>
-
-            <div className="space-y-2.5">
-              <h4 className="font-bold text-sm text-white flex items-center space-x-1">
-                <Mail className="h-4.5 w-4.5 text-sage-400" />
-                <span>Market Info</span>
-              </h4>
-              <p className="text-xs text-forest-200">
-                Helpline: support@deshimart.org<br />
-                Available 24/7 in local dialects via our AI Farming Assistant widget.
-              </p>
-            </div>
-          </div>
-          
-          <div className="border-t border-forest-800 mt-8 pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-forest-300">
-            <p>© {new Date().getFullYear()} DeshiMart Agricultural Solutions. All rights reserved.</p>
-            <div className="flex items-center space-x-1.5 mt-2 sm:mt-0 font-semibold uppercase tracking-wider">
-              <ShieldCheck className="h-4.5 w-4.5 text-sage-500" />
-              <span>Direct Farm-to-Consumer Platform</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      {/* Compliance & Legal Footer */}
+      <Footer setActivePage={setActivePage} />
 
       {/* Floating AI Chat Assistant */}
       <AIChat />
