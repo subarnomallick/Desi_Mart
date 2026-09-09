@@ -17,10 +17,46 @@ import Footer from './components/Footer';
 import AIChat from './components/AIChat';
 
 export default function App() {
-  const [activePage, setActivePage] = useState('home');
+  const getInitialPage = () => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+      const validPages = [
+        'home', 'catalog', 'farmer-dashboard', 'profile', 'cart', 'login',
+        'about-us', 'contact-us', 'terms-conditions', 'privacy-policy',
+        'refund-policy', 'shipping-policy', 'admin-payouts'
+      ];
+      if (validPages.includes(path)) {
+        return path;
+      }
+    }
+    return 'home';
+  };
+
+  const [activePage, setActivePageState] = useState(getInitialPage);
   const [cart, setCart] = useState([]);
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
+
+  const setActivePage = (page) => {
+    setActivePageState(page);
+    if (typeof window !== 'undefined') {
+      const newPath = page === 'home' ? '/' : `/${page}`;
+      if (window.location.pathname !== newPath) {
+        window.history.pushState(null, '', newPath);
+      }
+      window.scrollTo(0, 0);
+    }
+  };
+
+  // Sync with browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname.replace(/^\/+|\/+$/g, '') || 'home';
+      setActivePageState(path);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Restore session and cart on mount
   useEffect(() => {
