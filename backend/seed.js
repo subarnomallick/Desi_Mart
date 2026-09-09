@@ -10,15 +10,20 @@ function hashPassword(password) {
 
 export async function seedInitialData() {
   try {
-    const productCount = await Product.countDocuments();
-    if (productCount > 0) {
-      console.log(`📦 MongoDB already contains ${productCount} products. Skipping seed.`);
-      return;
+    // 1. Create or ensure Demo Admin, Farmers and Customers
+    let adminUser = await User.findOne({ email: 'admin@deshimart.com' });
+    if (!adminUser) {
+      adminUser = await User.create({
+        name: 'Subarno Mallick (Platform Admin)',
+        email: 'admin@deshimart.com',
+        password_hash: hashPassword('admin123'),
+        role: 'admin',
+        address: 'DeshiMart HQ, Bengaluru, Karnataka',
+        phone: '+91 98765 00001'
+      });
+      console.log('👑 Admin user created: admin@deshimart.com');
     }
 
-    console.log('🌱 Seeding initial MongoDB users and products...');
-
-    // 1. Create Demo Farmers and Customers if they don't exist
     let farmerHarpreet = await User.findOne({ email: 'harpreet@deshimart.com' });
     if (!farmerHarpreet) {
       farmerHarpreet = await User.create({
@@ -27,8 +32,24 @@ export async function seedInitialData() {
         password_hash: hashPassword('farmer123'),
         role: 'farmer',
         address: 'Amritsar Organic Farm, Punjab',
-        phone: '+91 98765 43210'
+        phone: '+91 98765 43210',
+        payout_details: {
+          upi_id: 'harpreet.farmer@okhdfcbank',
+          account_number: '50100482910482',
+          ifsc_code: 'HDFC0001234',
+          bank_name: 'HDFC Bank, Amritsar Main',
+          account_holder_name: 'Harpreet Singh'
+        }
       });
+    } else if (!farmerHarpreet.payout_details || !farmerHarpreet.payout_details.upi_id) {
+      farmerHarpreet.payout_details = {
+        upi_id: 'harpreet.farmer@okhdfcbank',
+        account_number: '50100482910482',
+        ifsc_code: 'HDFC0001234',
+        bank_name: 'HDFC Bank, Amritsar Main',
+        account_holder_name: 'Harpreet Singh'
+      };
+      await farmerHarpreet.save();
     }
 
     let farmerRamesh = await User.findOne({ email: 'ramesh@deshimart.com' });
@@ -39,8 +60,24 @@ export async function seedInitialData() {
         password_hash: hashPassword('farmer123'),
         role: 'farmer',
         address: 'Green Meadows, Gujarat',
-        phone: '+91 98765 12345'
+        phone: '+91 98765 12345',
+        payout_details: {
+          upi_id: 'ramesh.kisan@icici',
+          account_number: '102938475610',
+          ifsc_code: 'ICIC0005678',
+          bank_name: 'ICICI Bank, Anand Branch',
+          account_holder_name: 'Ramesh Patel'
+        }
       });
+    } else if (!farmerRamesh.payout_details || !farmerRamesh.payout_details.upi_id) {
+      farmerRamesh.payout_details = {
+        upi_id: 'ramesh.kisan@icici',
+        account_number: '102938475610',
+        ifsc_code: 'ICIC0005678',
+        bank_name: 'ICICI Bank, Anand Branch',
+        account_holder_name: 'Ramesh Patel'
+      };
+      await farmerRamesh.save();
     }
 
     let demoCustomer = await User.findOne({ email: 'customer@deshimart.com' });
@@ -53,6 +90,12 @@ export async function seedInitialData() {
         address: 'Flat 402, Green Glen Heights, Bengaluru',
         phone: '+91 99887 76655'
       });
+    }
+
+    const productCount = await Product.countDocuments();
+    if (productCount > 0) {
+      console.log(`📦 MongoDB already contains ${productCount} products.`);
+      return;
     }
 
     // 2. Initial Agricultural Products

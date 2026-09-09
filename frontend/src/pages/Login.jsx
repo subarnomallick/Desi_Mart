@@ -42,7 +42,9 @@ export default function Login({ setToken, setUser, setActivePage }) {
         localStorage.setItem('deshimart_user', JSON.stringify(data.user));
 
         // Navigate based on role
-        if (data.user.role === 'farmer') {
+        if (data.user.role === 'admin') {
+          setActivePage('admin-payouts');
+        } else if (data.user.role === 'farmer') {
           setActivePage('farmer-dashboard');
         } else {
           setActivePage('catalog');
@@ -236,6 +238,56 @@ export default function Login({ setToken, setUser, setActivePage }) {
               <span>{loading ? 'Authenticating...' : isLogin ? 'Sign In' : 'Create Account'}</span>
               <ArrowRight className="h-4 w-4" />
             </button>
+
+            {/* Quick One-Click Demo Logins */}
+            <div className="pt-4 border-t border-slate-100">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center mb-2.5">
+                ⚡ Quick Demo Accounts (1-Click Fill)
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('customer@deshimart.com');
+                    setPassword('customer123');
+                    setIsLogin(true);
+                  }}
+                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-forest-50 hover:border-forest-300 text-left transition-all group"
+                  title="Aarav Sharma (Customer)"
+                >
+                  <div className="text-[11px] font-black text-slate-800 group-hover:text-forest-700">🛒 Customer</div>
+                  <div className="text-[9px] text-slate-400">Buyer Account</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('harpreet@deshimart.com');
+                    setPassword('farmer123');
+                    setIsLogin(true);
+                  }}
+                  className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-forest-50 hover:border-forest-300 text-left transition-all group"
+                  title="Harpreet Singh (Farmer)"
+                >
+                  <div className="text-[11px] font-black text-slate-800 group-hover:text-forest-700">🌾 Farmer</div>
+                  <div className="text-[9px] text-slate-400">Seller Account</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail('admin@deshimart.com');
+                    setPassword('admin123');
+                    setIsLogin(true);
+                  }}
+                  className="p-2 rounded-xl border border-amber-200 bg-amber-50/40 hover:bg-amber-100 hover:border-amber-400 text-left transition-all group"
+                  title="Subarno Mallick (Platform Owner)"
+                >
+                  <div className="text-[11px] font-black text-amber-900 group-hover:text-amber-950">👑 Admin</div>
+                  <div className="text-[9px] text-amber-700">Owner / Escrow</div>
+                </button>
+              </div>
+            </div>
           </form>
         </div>
 

@@ -17,6 +17,14 @@ const orderItemSchema = new mongoose.Schema({
   price: {
     type: Number,
     required: true
+  },
+  farmer_id: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  farmer_name: {
+    type: String,
+    default: ''
   }
 }, { _id: false });
 
@@ -72,6 +80,28 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: null
     },
+    admin_gross_amount: {
+      type: Number,
+      default: 0
+    },
+    admin_commission_amount: {
+      type: Number,
+      default: 0
+    },
+    farmer_splits: [
+      {
+        farmer_id: { type: mongoose.Schema.Types.Mixed },
+        farmer_name: { type: String, default: '' },
+        items_amount: { type: Number, default: 0 },
+        commission_rate: { type: Number, default: 5 },
+        commission_amount: { type: Number, default: 0 },
+        net_payout: { type: Number, default: 0 },
+        payout_status: { type: String, enum: ['pending', 'processing', 'settled'], default: 'pending' },
+        payout_ref: { type: String, default: null },
+        payout_notes: { type: String, default: '' },
+        settled_at: { type: Date, default: null }
+      }
+    ],
     items: [orderItemSchema]
   },
   {

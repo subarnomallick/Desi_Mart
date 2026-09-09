@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['farmer', 'customer'],
+      enum: ['farmer', 'customer', 'admin'],
       required: [true, 'Role is required'],
       default: 'customer'
     },
@@ -31,6 +31,13 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       default: ''
+    },
+    payout_details: {
+      upi_id: { type: String, default: '' },
+      account_number: { type: String, default: '' },
+      ifsc_code: { type: String, default: '' },
+      bank_name: { type: String, default: '' },
+      account_holder_name: { type: String, default: '' }
     }
   },
   {

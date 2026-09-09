@@ -12,6 +12,7 @@ import TermsConditions from './pages/TermsConditions';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import RefundPolicy from './pages/RefundPolicy';
 import ShippingPolicy from './pages/ShippingPolicy';
+import AdminPayouts from './pages/AdminPayouts';
 import Footer from './components/Footer';
 import AIChat from './components/AIChat';
 
@@ -88,8 +89,12 @@ export default function App() {
       case 'catalog':
         return <Catalog onAddToCart={handleAddToCart} user={user} />;
       case 'farmer-dashboard':
-        return user && user.role === 'farmer' 
+        return user && (user.role === 'farmer' || user.role === 'admin')
           ? <FarmerDashboard token={token} user={user} /> 
+          : <Home setActivePage={setActivePage} user={user} />;
+      case 'admin-payouts':
+        return user && (user.role === 'admin' || user.email === 'admin@deshimart.com')
+          ? <AdminPayouts token={token} user={user} setActivePage={setActivePage} />
           : <Home setActivePage={setActivePage} user={user} />;
       case 'profile':
         return user ? (

@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import mongoose from 'mongoose';
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import Razorpay from 'razorpay';
 
 import { connectDB } from './config/db.js';
@@ -16,6 +16,8 @@ import { seedInitialData } from './seed.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config();
 const frontendDistPath = path.resolve(__dirname, '../frontend/dist');
 
 const app = express();
@@ -110,8 +112,8 @@ app.post('/api/auth/register', async (req, res) => {
   if (!name || !email || !password || !role) {
     return res.status(400).json({ error: 'Name, email, password, and role are required' });
   }
-  if (role !== 'farmer' && role !== 'customer') {
-    return res.status(400).json({ error: 'Role must be either farmer or customer' });
+  if (role !== 'farmer' && role !== 'customer' && role !== 'admin') {
+    return res.status(400).json({ error: 'Role must be either farmer, customer, or admin' });
   }
 
   try {
@@ -127,7 +129,14 @@ app.post('/api/auth/register', async (req, res) => {
       password_hash: passwordHash,
       role,
       address: address || '',
-      phone: phone || ''
+      phone: phone || '',
+      payout_details: {
+        upi_id: '',
+        account_number: '',
+        ifsc_code: '',
+        bank_name: '',
+        account_holder_name: ''
+      }
     });
 
     const token = generateToken(user);
@@ -140,7 +149,8 @@ app.post('/api/auth/register', async (req, res) => {
         email: user.email, 
         role: user.role, 
         address: user.address, 
-        phone: user.phone 
+        phone: user.phone,
+        payout_details: user.payout_details
       } 
     });
   } catch (err) {
@@ -176,7 +186,8 @@ app.post('/api/auth/login', async (req, res) => {
         email: user.email, 
         role: user.role, 
         address: user.address, 
-        phone: user.phone 
+        phone: user.phone,
+        payout_details: user.payout_details || {}
       }
     });
   } catch (err) {
@@ -198,7 +209,8 @@ app.get('/api/auth/me', authMiddleware, async (req, res) => {
         email: user.email,
         role: user.role,
         address: user.address,
-        phone: user.phone
+        phone: user.phone,
+        payout_details: user.payout_details || {}
       }
     });
   } catch (err) {
@@ -253,7 +265,8 @@ app.put('/api/auth/profile', authMiddleware, async (req, res) => {
         email: user.email,
         role: user.role,
         address: user.address,
-        phone: user.phone
+        phone: user.phone,
+        payout_details: user.payout_details || {}
       }
     });
   } catch (err) {
@@ -374,7 +387,10 @@ app.post('/api/payments/razorpay/create-order', authMiddleware, async (req, res)
   }
 
   try {
-    // 1. Verify product availability
+    // 1. Verify product availability and gather farmer details
+    const populatedItems = [];
+    const farmerMap = new Map(); // farmer_id -> { farmer_id, farmer_name, items_amount }
+
     for (const item of items) {
       const prod = await Product.findById(item.product_id);
       if (!prod || prod.stock < item.quantity) {
@@ -382,22 +398,70 @@ app.post('/api/payments/razorpay/create-order', authMiddleware, async (req, res)
           error: `Insufficient stock for product: ${item.product_name || 'Item'}. Available: ${prod ? prod.stock : 0}`
         });
       }
+
+      const farmerId = prod.farmer_id || 'direct_farmer';
+      const farmerName = prod.farmer_name || 'Verified Farmer';
+      const itemPrice = parseFloat(item.price);
+      const itemQty = parseInt(item.quantity);
+      const itemTotal = itemPrice * itemQty;
+
+      populatedItems.push({
+        product_id: item.product_id,
+        product_name: prod.name || item.product_name,
+        quantity: itemQty,
+        price: itemPrice,
+        farmer_id: farmerId,
+        farmer_name: farmerName
+      });
+
+      const key = farmerId.toString();
+      if (!farmerMap.has(key)) {
+        farmerMap.set(key, {
+          farmer_id: farmerId,
+          farmer_name: farmerName,
+          items_amount: 0
+        });
+      }
+      farmerMap.get(key).items_amount += itemTotal;
     }
 
-    // 2. Create pending Order in MongoDB
+    // 2. Calculate Farmer Splits & Platform Commission (5% platform fee)
+    const COMMISSION_RATE = 5; // 5% marketplace commission retained by Subarno
+    const farmerSplits = [];
+    let totalCommission = 0;
+
+    for (const [, data] of farmerMap.entries()) {
+      const gross = Number(data.items_amount.toFixed(2));
+      const commission = Number(((gross * COMMISSION_RATE) / 100).toFixed(2));
+      const netPayout = Number((gross - commission).toFixed(2));
+      totalCommission += commission;
+
+      farmerSplits.push({
+        farmer_id: data.farmer_id,
+        farmer_name: data.farmer_name,
+        items_amount: gross,
+        commission_rate: COMMISSION_RATE,
+        commission_amount: commission,
+        net_payout: netPayout,
+        payout_status: 'pending',
+        payout_ref: null,
+        payout_notes: '',
+        settled_at: null
+      });
+    }
+
+    // 3. Create pending Order in MongoDB with Escrow & Split tracking
     const order = await Order.create({
       customer_id: req.user.id,
       customer_name: req.user.name,
       total_amount: parseFloat(totalAmount),
+      admin_gross_amount: parseFloat(totalAmount),
+      admin_commission_amount: Number(totalCommission.toFixed(2)),
+      farmer_splits: farmerSplits,
       payment_status: 'pending',
       payment_method: 'razorpay',
       payment_gateway: 'razorpay',
-      items: items.map(it => ({
-        product_id: it.product_id,
-        product_name: it.product_name,
-        quantity: parseInt(it.quantity),
-        price: parseFloat(it.price)
-      }))
+      items: populatedItems
     });
 
     const amountInPaise = Math.round(parseFloat(totalAmount) * 100);
@@ -575,6 +639,257 @@ app.get('/api/orders', authMiddleware, async (req, res) => {
     res.json(orders);
   } catch (err) {
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// 3.5. MARKETPLACE ESCROW & FARMER PAYOUT ENDPOINTS
+
+// Farmer: Fetch own earnings, commission, and payout history
+app.get('/api/farmers/payouts', authMiddleware, async (req, res) => {
+  try {
+    const farmerIdStr = req.user.id.toString();
+
+    // Fetch all completed orders
+    const orders = await Order.find({ payment_status: 'completed' }).sort({ createdAt: -1 });
+
+    let grossSales = 0;
+    let totalCommission = 0;
+    let netEarnings = 0;
+    let settledAmount = 0;
+    let pendingAmount = 0;
+    const farmerOrderRecords = [];
+
+    for (const order of orders) {
+      // 1. Check existing splits
+      const splits = (order.farmer_splits || []).filter(
+        s => s.farmer_id && s.farmer_id.toString() === farmerIdStr
+      );
+
+      if (splits.length > 0) {
+        for (const split of splits) {
+          grossSales += split.items_amount || 0;
+          totalCommission += split.commission_amount || 0;
+          netEarnings += split.net_payout || 0;
+
+          if (split.payout_status === 'settled') {
+            settledAmount += split.net_payout || 0;
+          } else {
+            pendingAmount += split.net_payout || 0;
+          }
+
+          farmerOrderRecords.push({
+            orderId: order.id,
+            orderDate: order.createdAt,
+            customerName: order.customer_name,
+            itemsAmount: split.items_amount,
+            commissionRate: split.commission_rate || 5,
+            commissionAmount: split.commission_amount,
+            netPayout: split.net_payout,
+            payoutStatus: split.payout_status || 'pending',
+            payoutRef: split.payout_ref,
+            payoutNotes: split.payout_notes,
+            settledAt: split.settled_at
+          });
+        }
+      } else {
+        // Fallback for older orders without pre-computed splits
+        const farmerItems = (order.items || []).filter(
+          it => it.farmer_id && it.farmer_id.toString() === farmerIdStr
+        );
+        if (farmerItems.length > 0) {
+          const gross = farmerItems.reduce((s, it) => s + (it.price * it.quantity), 0);
+          const commission = Number(((gross * 5) / 100).toFixed(2));
+          const net = Number((gross - commission).toFixed(2));
+          grossSales += gross;
+          totalCommission += commission;
+          netEarnings += net;
+          pendingAmount += net;
+          farmerOrderRecords.push({
+            orderId: order.id,
+            orderDate: order.createdAt,
+            customerName: order.customer_name,
+            itemsAmount: gross,
+            commissionRate: 5,
+            commissionAmount: commission,
+            netPayout: net,
+            payoutStatus: 'pending',
+            payoutRef: null,
+            payoutNotes: '',
+            settledAt: null
+          });
+        }
+      }
+    }
+
+    const userRecord = await User.findById(req.user.id);
+
+    res.json({
+      summary: {
+        grossSales: Number(grossSales.toFixed(2)),
+        totalCommission: Number(totalCommission.toFixed(2)),
+        netEarnings: Number(netEarnings.toFixed(2)),
+        settledAmount: Number(settledAmount.toFixed(2)),
+        pendingAmount: Number(pendingAmount.toFixed(2)),
+        totalOrders: farmerOrderRecords.length
+      },
+      payoutDetails: userRecord?.payout_details || {},
+      orders: farmerOrderRecords
+    });
+  } catch (err) {
+    console.error('Farmer payouts error:', err);
+    res.status(500).json({ error: 'Failed to fetch payout records' });
+  }
+});
+
+// Farmer: Update bank account & UPI payout details
+app.put('/api/farmers/payout-details', authMiddleware, async (req, res) => {
+  const { upi_id, account_number, ifsc_code, bank_name, account_holder_name } = req.body;
+
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    user.payout_details = {
+      upi_id: (upi_id || '').trim(),
+      account_number: (account_number || '').trim(),
+      ifsc_code: (ifsc_code || '').toUpperCase().trim(),
+      bank_name: (bank_name || '').trim(),
+      account_holder_name: (account_holder_name || '').trim()
+    };
+
+    await user.save();
+
+    res.json({
+      message: 'Payout bank details saved successfully',
+      payoutDetails: user.payout_details
+    });
+  } catch (err) {
+    console.error('Update payout details error:', err);
+    res.status(500).json({ error: 'Failed to update payout details' });
+  }
+});
+
+// Admin: Marketplace escrow overview (All payments received in bank, commissions, farmer splits)
+app.get('/api/admin/payouts', authMiddleware, async (req, res) => {
+  // Allow admin, or platform owner email, or farmer in dev
+  if (req.user.role !== 'admin' && req.user.email !== 'admin@deshimart.com') {
+    return res.status(403).json({ error: 'Access restricted to Platform Administrator' });
+  }
+
+  try {
+    const orders = await Order.find({ payment_status: 'completed' }).sort({ createdAt: -1 });
+    const allFarmers = await User.find({ role: 'farmer' });
+    const farmerLookup = new Map();
+    allFarmers.forEach(f => farmerLookup.set(f._id.toString(), f));
+
+    let totalBankInflow = 0;
+    let totalPlatformCommission = 0;
+    let totalSettledToFarmers = 0;
+    let totalPendingToFarmers = 0;
+
+    const pendingDisbursements = [];
+    const settledDisbursements = [];
+
+    for (const order of orders) {
+      totalBankInflow += order.total_amount || 0;
+      totalPlatformCommission += order.admin_commission_amount || Number(((order.total_amount || 0) * 0.05).toFixed(2));
+
+      const splits = order.farmer_splits || [];
+      for (const split of splits) {
+        const fId = split.farmer_id ? split.farmer_id.toString() : '';
+        const farmerObj = farmerLookup.get(fId) || {};
+
+        const record = {
+          orderId: order.id,
+          orderDate: order.createdAt,
+          customerName: order.customer_name,
+          farmerId: fId,
+          farmerName: split.farmer_name || farmerObj.name || 'Verified Farmer',
+          farmerPhone: farmerObj.phone || 'N/A',
+          farmerEmail: farmerObj.email || 'N/A',
+          payoutDetails: farmerObj.payout_details || {},
+          itemsAmount: split.items_amount || 0,
+          commissionRate: split.commission_rate || 5,
+          commissionAmount: split.commission_amount || 0,
+          netPayout: split.net_payout || 0,
+          payoutStatus: split.payout_status || 'pending',
+          payoutRef: split.payout_ref,
+          payoutNotes: split.payout_notes,
+          settledAt: split.settled_at
+        };
+
+        if (split.payout_status === 'settled') {
+          totalSettledToFarmers += split.net_payout || 0;
+          settledDisbursements.push(record);
+        } else {
+          totalPendingToFarmers += split.net_payout || 0;
+          pendingDisbursements.push(record);
+        }
+      }
+    }
+
+    res.json({
+      summary: {
+        totalBankInflow: Number(totalBankInflow.toFixed(2)),
+        totalPlatformCommission: Number(totalPlatformCommission.toFixed(2)),
+        totalSettledToFarmers: Number(totalSettledToFarmers.toFixed(2)),
+        totalPendingToFarmers: Number(totalPendingToFarmers.toFixed(2)),
+        pendingCount: pendingDisbursements.length,
+        settledCount: settledDisbursements.length
+      },
+      pendingDisbursements,
+      settledDisbursements
+    });
+  } catch (err) {
+    console.error('Admin payouts error:', err);
+    res.status(500).json({ error: 'Failed to fetch admin payouts overview' });
+  }
+});
+
+// Admin: Mark farmer payout proportion as settled (UTR / Reference number)
+app.post('/api/admin/payouts/settle', authMiddleware, async (req, res) => {
+  if (req.user.role !== 'admin' && req.user.email !== 'admin@deshimart.com') {
+    return res.status(403).json({ error: 'Access restricted to Platform Administrator' });
+  }
+
+  const { orderId, farmerId, payoutRef, payoutNotes } = req.body;
+  if (!orderId || !farmerId) {
+    return res.status(400).json({ error: 'Order ID and Farmer ID are required' });
+  }
+
+  try {
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const split = order.farmer_splits.find(
+      s => s.farmer_id && s.farmer_id.toString() === farmerId.toString()
+    );
+
+    if (!split) {
+      return res.status(404).json({ error: 'Farmer split not found in this order' });
+    }
+
+    split.payout_status = 'settled';
+    split.payout_ref = payoutRef || `UTR${Date.now()}`;
+    split.payout_notes = payoutNotes || 'Transferred via UPI/IMPS';
+    split.settled_at = new Date();
+
+    await order.save();
+
+    console.log(`💸 Settled payout of ₹${split.net_payout} to farmer ${split.farmer_name} for Order #${order.id}. Ref: ${split.payout_ref}`);
+
+    res.json({
+      success: true,
+      message: `Successfully marked ₹${split.net_payout} settled to ${split.farmer_name}`,
+      split
+    });
+  } catch (err) {
+    console.error('Admin settle error:', err);
+    res.status(500).json({ error: 'Failed to settle payout' });
   }
 });
 

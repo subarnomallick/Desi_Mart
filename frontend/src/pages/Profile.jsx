@@ -203,11 +203,13 @@ export default function Profile({ user, setUser, token, setActivePage, onLogout 
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1">
                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight">{user.name}</h1>
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-                  user.role === 'farmer' 
+                  user.role === 'admin'
+                    ? 'bg-amber-400/30 text-amber-200 border border-amber-300/40'
+                    : user.role === 'farmer' 
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40' 
-                    : 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
+                    : 'bg-blue-500/20 text-blue-200 border border-blue-400/40'
                 }`}>
-                  {user.role === 'farmer' ? '🌾 Verified Farmer' : '🛒 Valued Customer'}
+                  {user.role === 'admin' ? '👑 Platform Admin' : user.role === 'farmer' ? '🌾 Verified Farmer' : '🛒 Valued Customer'}
                 </span>
               </div>
               <p className="text-forest-200 text-sm flex items-center justify-center sm:justify-start gap-1.5">
@@ -225,6 +227,15 @@ export default function Profile({ user, setUser, token, setActivePage, onLogout 
 
           {/* Quick Action Badges */}
           <div className="flex sm:flex-col gap-2 w-full sm:w-auto">
+            {(user.role === 'admin' || user.email === 'admin@deshimart.com') && (
+              <button
+                onClick={() => setActivePage('admin-payouts')}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl text-sm transition-all shadow-md active:scale-95"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Settlements Hub</span>
+              </button>
+            )}
             {user.role === 'farmer' && (
               <button
                 onClick={() => setActivePage('farmer-dashboard')}

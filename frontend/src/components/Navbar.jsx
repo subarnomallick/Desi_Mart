@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingCart, LogOut, User, Leaf, LayoutDashboard, UserCheck } from 'lucide-react';
+import { ShoppingCart, LogOut, User, Leaf, LayoutDashboard, UserCheck, Landmark } from 'lucide-react';
 
 export default function Navbar({ activePage, setActivePage, cart, user, onLogout }) {
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -36,7 +36,7 @@ export default function Navbar({ activePage, setActivePage, cart, user, onLogout
               Market Catalog
             </button>
             
-            {user && user.role === 'farmer' && (
+            {user && (user.role === 'farmer' || user.role === 'admin') && (
               <button 
                 onClick={() => setActivePage('farmer-dashboard')}
                 className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center space-x-1.5 transition-colors ${
@@ -45,6 +45,18 @@ export default function Navbar({ activePage, setActivePage, cart, user, onLogout
               >
                 <LayoutDashboard className="h-4 w-4" />
                 <span>Farmer Panel</span>
+              </button>
+            )}
+
+            {user && (user.role === 'admin' || user.email === 'admin@deshimart.com') && (
+              <button 
+                onClick={() => setActivePage('admin-payouts')}
+                className={`px-3 py-2 rounded-md text-sm font-semibold flex items-center space-x-1.5 transition-colors ${
+                  activePage === 'admin-payouts' ? 'bg-forest-700 text-amber-300 font-bold shadow-inner' : 'text-amber-200 hover:text-white hover:bg-forest-600'
+                }`}
+              >
+                <Landmark className="h-4 w-4 text-amber-300" />
+                <span>Settlements Hub</span>
               </button>
             )}
 
@@ -151,12 +163,20 @@ export default function Navbar({ activePage, setActivePage, cart, user, onLogout
           >
             Market
           </button>
-          {user && user.role === 'farmer' && (
+          {user && (user.role === 'farmer' || user.role === 'admin') && (
             <button 
               onClick={() => setActivePage('farmer-dashboard')}
               className={`text-xs font-semibold px-2 py-1 rounded ${activePage === 'farmer-dashboard' ? 'bg-forest-600' : ''}`}
             >
-              Farmer Panel
+              Farmer
+            </button>
+          )}
+          {user && (user.role === 'admin' || user.email === 'admin@deshimart.com') && (
+            <button 
+              onClick={() => setActivePage('admin-payouts')}
+              className={`text-xs font-semibold px-2 py-1 rounded text-amber-300 ${activePage === 'admin-payouts' ? 'bg-forest-700' : ''}`}
+            >
+              Settlements
             </button>
           )}
           {user && (
